@@ -1,0 +1,12 @@
+{
+  "content_width": 654,
+  "content_height": 422,
+  "title_bar_height": 22,
+  "window_origin": [180, 160],
+  "icon_size": 140,
+  "text_size": 12,
+  "icon_locations": {
+    "libhm.app": [197, 195],
+    "Applications": [473, 195]
+  }
+}

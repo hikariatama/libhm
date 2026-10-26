@@ -1,0 +1,91 @@
+name: PhotoAtlas
+options:
+  bundleIdPrefix: com.hikariatama
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    PRODUCT_NAME: libhm
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: libhm
+    INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+    INFOPLIST_KEY_NSPhotoLibraryUsageDescription: libhm uses photo locations to create a private map on this Mac.
+    CODE_SIGN_STYLE: Automatic
+targets:
+  PhotoAtlas:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/PhotoAtlas
+    dependencies:
+      - target: HeatmapProject
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hikariatama.PhotoAtlas
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/PhotoAtlas-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/PhotoAtlas.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  HeatmapProject:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/HeatmapProject
+      - path: Sources/PhotoAtlas
+        excludes: [PhotoAtlasApp.swift, Assets.xcassets]
+    dependencies:
+      - sdk: PhotosUI.framework
+    settings:
+      base:
+        PRODUCT_NAME: HeatmapProject
+        PRODUCT_MODULE_NAME: HeatmapProject
+        PRODUCT_BUNDLE_IDENTIFIER: com.hikariatama.PhotoAtlas.HeatmapProject
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/HeatmapProject-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/HeatmapProject.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PHOTO_PROJECT_EXTENSION
+        SWIFT_STRICT_CONCURRENCY: complete
+        ENABLE_HARDENED_RUNTIME: YES
+
+  PhotoAtlasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Sources/PhotoAtlas/PhotoRecord.swift
+      - path: Sources/PhotoAtlas/Heatmap.swift
+      - path: Sources/PhotoAtlas/HeatmapGPU.swift
+      - path: Sources/PhotoAtlas/HeatmapShader.swift
+      - path: Sources/PhotoAtlas/HeatmapPointIndex.swift
+      - path: Sources/PhotoAtlas/PerformanceReport.swift
+      - path: Sources/PhotoAtlas/MemoryCache.swift
+      - path: Sources/PhotoAtlas/AppModel.swift
+      - path: Sources/PhotoAtlas/MapViewport.swift
+      - path: Sources/PhotoAtlas/PhotoLibraryService.swift
+      - path: Sources/PhotoAtlas/PreviewLibrary.swift
+      - path: Sources/PhotoAtlas/Localization.swift
+      - path: Sources/PhotoAtlas/ViewerKeyboard.swift
+      - path: Sources/PhotoAtlas/PhotoGallery.swift
+      - path: Sources/PhotoAtlas/Resources
+    settings:
+      base:
+        PRODUCT_NAME: PhotoAtlasTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.hikariatama.PhotoAtlasTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  PhotoAtlas:
+    build:
+      targets:
+        PhotoAtlas: all
+        PhotoAtlasTests: [test]
+    test:
+      targets: [PhotoAtlasTests]

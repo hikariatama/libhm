@@ -1,0 +1,2 @@
+"NSPhotoLibraryUsageDescription" = "libhm использует медиатеку для отображения фотографий и мест съёмки и автоматически добавляет новые фото.";
+"NSPhotoLibraryAddUsageDescription" = "libhm создаёт проекты тепловых карт, не изменяя ваши фотографии.";
