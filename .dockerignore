@@ -1,0 +1,17 @@
+# The website image needs only these files, even from the full application repo.
+*
+!Dockerfile
+!nginx.conf
+!landing/
+!landing/**
+**/.room237-*
+**/.git
+**/.DS_Store
+**/.env*
+**/*.log
+**/*.sqlite*
+**/*.db
+**/node_modules
+**/__pycache__
+**/*.dmg
+**/*.zip
