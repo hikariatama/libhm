@@ -14,6 +14,6 @@ External requests: MapLibre 4.7.1 from unpkg and tiles, fonts, and sprites from 
 
 The Download button links to the latest GitHub release's `libhm-macos-universal.dmg`. No application binary is copied into the website image.
 
-Deploy from the full repository using the root Dockerfile, Nginx configuration and `.dockerignore`. Dokploy continues reading Soft Serve `deploy/libhm`, branch `main`, build context `/`, with manual deployment. Keep its `main` commit identical to GitHub; no generated landing snapshot or separate source manifest is needed. See the root README for the repository and release workflow.
+Deploy from the full repository using the root Dockerfile, Nginx configuration and `.dockerignore`. Forgejo CI builds main and Flux applies the pinned image. See the root README for the repository and release workflow.
 
 `assets/wordmark-dark.svg` is a copy of the app's wordmark from `app/Sources/PhotoAtlas/BrandAssets.xcassets`; `assets/avx.svg` comes from the Room 237 site.

@@ -78,27 +78,33 @@ final class SpatialIndex: Sendable {
         let entries: [Int]
         let children: [Node]
 
-        init(indices: [Int], points: [AtlasPoint], bounds: AtlasRect, depth: Int) {
+        init(indices: [Int], points: [AtlasPoint], bounds: AtlasRect, depth: Int, checkCancellation: () throws -> Void) rethrows {
+            try checkCancellation()
             self.bounds = bounds
             count = indices.count
-            center = AtlasPoint(x: indices.reduce(0) { $0 + points[$1].x } / Double(max(1, indices.count)),
-                                y: indices.reduce(0) { $0 + points[$1].y } / Double(max(1, indices.count)))
+            var x = 0.0, y = 0.0
+            for i in indices {
+                try checkCancellation()
+                x += points[i].x; y += points[i].y
+            }
+            center = AtlasPoint(x: x / Double(max(1, indices.count)), y: y / Double(max(1, indices.count)))
             if indices.count <= 32 || depth >= 20 {
                 entries = indices; children = []; return
             }
             let half = bounds.width / 2
             var groups = [[Int]](repeating: [], count: 4)
             for i in indices {
+                try checkCancellation()
                 let column = points[i].x >= bounds.x + half ? 1 : 0
                 let row = points[i].y >= bounds.y + half ? 1 : 0
                 groups[row * 2 + column].append(i)
             }
             entries = []
-            children = groups.enumerated().compactMap { n, group in
+            children = try groups.enumerated().compactMap { n, group in
                 guard !group.isEmpty else { return nil }
-                return Node(indices: group, points: points,
+                return try Node(indices: group, points: points,
                             bounds: AtlasRect(x: bounds.x + Double(n % 2) * half,
-                                              y: bounds.y + Double(n / 2) * half, width: half, height: half), depth: depth + 1)
+                                              y: bounds.y + Double(n / 2) * half, width: half, height: half), depth: depth + 1, checkCancellation: checkCancellation)
             }
         }
     }
@@ -107,31 +113,55 @@ final class SpatialIndex: Sendable {
     private let points: [AtlasPoint]
     private let root: Node
 
-    init(photos: [PhotoRecord]) {
-        let valid = photos.sorted(by: Self.dateOrder).compactMap { photo -> (PhotoRecord, AtlasPoint)? in
-            guard let point = photo.point else { return nil }; return (photo, point)
+    convenience init(photos: [PhotoRecord]) {
+        self.init(photos: photos, checkCancellation: {})
+    }
+
+    init(photos: [PhotoRecord], checkCancellation: () throws -> Void) rethrows {
+        try checkCancellation()
+        let sorted = try photos.sorted { a, b in
+            try checkCancellation()
+            return Self.dateOrder(a, b)
         }
-        self.photos = valid.map(\.0)
-        points = valid.map(\.1)
-        root = Node(indices: Array(valid.indices), points: points,
-                    bounds: AtlasRect(x: 0, y: 0, width: 1, height: 1), depth: 0)
+        var validPhotos: [PhotoRecord] = [], validPoints: [AtlasPoint] = []
+        for photo in sorted {
+            try checkCancellation()
+            guard let point = photo.point else { continue }
+            validPhotos.append(photo); validPoints.append(point)
+        }
+        self.photos = validPhotos
+        points = validPoints
+        root = try Node(indices: Array(validPoints.indices), points: validPoints,
+                        bounds: AtlasRect(x: 0, y: 0, width: 1, height: 1), depth: 0,
+                        checkCancellation: checkCancellation)
     }
 
     func query(_ rect: AtlasRect) -> [PhotoRecord] {
+        query(rect, checkCancellation: {})
+    }
+
+    func query(_ rect: AtlasRect, checkCancellation: () throws -> Void) rethrows -> [PhotoRecord] {
+        try checkCancellation()
         var found = Set<Int>()
         // The map can display copies of the world on either side of the date line.
         let first = Int(floor(rect.x)), last = Int(floor(rect.x + min(rect.width, 1)))
         for world in first...max(first, last) {
             let local = AtlasRect(x: rect.x - Double(world), y: rect.y, width: min(rect.width, 1), height: rect.height)
-            collect(root, rect: local, into: &found)
+            try collect(root, rect: local, into: &found, checkCancellation: checkCancellation)
         }
-        return found.sorted().map { photos[$0] }
+        let ordered = try found.sorted { a, b in try checkCancellation(); return a < b }
+        return try ordered.map { i in try checkCancellation(); return photos[i] }
     }
 
-    private func collect(_ node: Node, rect: AtlasRect, into found: inout Set<Int>) {
+    private func collect(_ node: Node, rect: AtlasRect, into found: inout Set<Int>,
+                         checkCancellation: () throws -> Void) rethrows {
+        try checkCancellation()
         guard node.bounds.intersects(rect) else { return }
-        for i in node.entries where rect.contains(points[i]) { found.insert(i) }
-        for child in node.children { collect(child, rect: rect, into: &found) }
+        for i in node.entries {
+            try checkCancellation()
+            if rect.contains(points[i]) { found.insert(i) }
+        }
+        for child in node.children { try collect(child, rect: rect, into: &found, checkCancellation: checkCancellation) }
     }
 
     func density(in rect: AtlasRect, resolution: Double) -> [WeightedPoint] {
@@ -174,10 +204,16 @@ struct GallerySection: Sendable {
     var photos: [PhotoRecord]
 
     static func group(_ photos: [PhotoRecord]) -> [GallerySection] {
+        group(photos, checkCancellation: {})
+    }
+
+    static func group(_ photos: [PhotoRecord], checkCancellation: () throws -> Void) rethrows -> [GallerySection] {
+        try checkCancellation()
         var result: [GallerySection] = []
         var interval: DateInterval?
         let calendar = Calendar.current
         for photo in photos {
+            try checkCancellation()
             let date = photo.date ?? .distantPast
             if let interval, interval.contains(date), !result.isEmpty {
                 result[result.count - 1].photos.append(photo)
@@ -189,5 +225,26 @@ struct GallerySection: Sendable {
             }
         }
         return result
+    }
+}
+
+// One executor bounds CPU work across models, filters and viewport changes.
+actor GalleryWorker {
+    static let shared = GalleryWorker()
+
+    func run<Value: Sendable>(_ work: @Sendable () throws -> Value) throws -> Value {
+        try Task.checkCancellation()
+        return try work()
+    }
+
+    nonisolated static func perform<Value: Sendable>(_ work: @escaping @Sendable () throws -> Value) async throws -> Value {
+        try Task.checkCancellation()
+        let task = Task.detached(priority: .userInitiated) { try await shared.run(work) }
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 }

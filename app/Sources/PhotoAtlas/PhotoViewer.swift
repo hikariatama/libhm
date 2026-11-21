@@ -78,6 +78,7 @@ struct PhotoViewer: View {
         }.background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
         .onChange(of: photo.id, initial: true) { _, _ in fit(animated: false); loaded.load(photo) }
         .onChange(of: photo.modified) { _, _ in loaded.load(photo) }
+        .onChange(of: PhotoImageLoader.shared.epoch) { _, _ in loaded.load(photo) }
         .onDisappear { loaded.cancel() }
         }
     }

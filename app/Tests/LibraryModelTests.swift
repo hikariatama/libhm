@@ -39,6 +39,26 @@ final class LibraryModelTests: XCTestCase {
     }
 
     @MainActor
+    func testChangedLibraryInvalidatesImagesWhileKeepingOpenPhoto() async throws {
+        let first = photo("first")
+        var records = [first]
+        let model = AppModel(isProject: true, libraryLoader: { LibrarySnapshot(photos: records, albums: []) })
+        defer { model.stop() }
+        await model.load()
+        try await waitFor { model.index.photos.count == 1 }
+        model.chooseArea(center: first.point!, radius: 0.01)
+        try await waitFor { model.gallery.count == 1 }
+        model.open(first)
+        let epoch = PhotoImageLoader.shared.epoch
+        records.append(photo("new-import"))
+        await model.load()
+        XCTAssertEqual(model.viewerID, first.id)
+        XCTAssertEqual(PhotoImageLoader.shared.epoch, epoch + 1)
+        await model.load()
+        XCTAssertEqual(PhotoImageLoader.shared.epoch, epoch + 1, "Unchanged snapshots must not restart image requests")
+    }
+
+    @MainActor
     func testStoppedLibraryLoadCannotReplaceNewerData() async throws {
         let old = photo("old"), current = photo("current")
         var pending: CheckedContinuation<LibrarySnapshot, Never>?

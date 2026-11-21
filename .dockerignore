@@ -15,3 +15,11 @@
 **/__pycache__
 **/*.dmg
 **/*.zip
+!scripts/
+!scripts/publish-draft.py
+!scripts/test_publish_draft.py
+!scripts/release-notes.md
+!ci/
+!ci/run-tests.py
+!smoke/
+!smoke/**

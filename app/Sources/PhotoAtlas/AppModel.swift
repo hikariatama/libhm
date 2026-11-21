@@ -140,17 +140,21 @@ final class AppModel {
     }
 
     private func applyFilters() {
-        filterTask?.cancel()
+        filterTask?.cancel(); queryTask?.cancel()
+        _ = queryGeneration.advance()
         let generation = filterGeneration.advance()
         let photos = photos, filters = filters
         let ids = albums.first { $0.id == filters.albumID }?.photoIDs
         filterTask = Task {
             try? await Task.sleep(for: .milliseconds(60))
             guard !Task.isCancelled else { return }
-            let result = await Task.detached(priority: .userInitiated) {
-                let filtered = photos.filter { filters.matches($0, albumIDs: ids) }
-                return (SpatialIndex(photos: filtered), filtered.count)
-            }.value
+            guard let result = try? await GalleryWorker.perform({
+                let filtered = try photos.filter { photo in
+                    try Task.checkCancellation()
+                    return filters.matches(photo, albumIDs: ids)
+                }
+                return (try SpatialIndex(photos: filtered, checkCancellation: Task.checkCancellation), filtered.count)
+            }) else { return }
             guard !Task.isCancelled, filterGeneration.accepts(generation) else { return }
             index = result.0; filteredCount = result.1; mappedCount = result.0.photos.count; revision += 1
             if let id = selectedID, !index.photos.contains(where: { $0.id == id }) { selectedID = nil; viewerID = nil }
@@ -189,17 +193,18 @@ final class AppModel {
         let index = index, center = selectionCenter, radius = selectionRadius
         queryTask = Task {
             let start = ContinuousClock.now
-            let result = await Task.detached(priority: .userInitiated) {
-                var result = index.query(area)
+            guard let result = try? await GalleryWorker.perform({
+                var result = try index.query(area, checkCancellation: Task.checkCancellation)
                 if let center {
-                    result = result.filter {
+                    result = try result.filter {
+                        try Task.checkCancellation()
                         guard let p = $0.point else { return false }
                         let dx = min(abs(p.x - center.x).truncatingRemainder(dividingBy: 1), 1 - abs(p.x - center.x).truncatingRemainder(dividingBy: 1))
                         return dx * dx + pow(p.y - center.y, 2) <= radius * radius
                     }
                 }
-                return (result, GallerySection.group(result))
-            }.value
+                return (result, try GallerySection.group(result, checkCancellation: Task.checkCancellation))
+            }) else { return }
             guard !Task.isCancelled, queryGeneration.accepts(generation) else { return }
             if gallery != result.0 { gallery = result.0; gallerySections = result.1; galleryRevision += 1 }
             queryMilliseconds = Double(start.duration(to: .now).components.attoseconds) / 1e15 + Double(start.duration(to: .now).components.seconds) * 1000

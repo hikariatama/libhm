@@ -54,12 +54,6 @@ cd app
 
 See [build, extension setup and privacy](app/README.md) and the [landing page](landing/README.md).
 
-## Repository and deployment
-
-The application and static landing share this repository. The root Dockerfile
-serves only `landing/`. Keep the deployment mirror on the reviewed `main` commit;
-deployment is manual. Development boundaries are in [AGENTS.md](AGENTS.md).
-
 ## Release integrity and secret scanning
 
 CI checks Git history and the working tree with checksum-pinned Gitleaks.
@@ -71,8 +65,11 @@ Builds use a checksum-verified XcodeGen archive and hash-locked Python wheels.
 archive fails verification; PATH/Homebrew XcodeGen binaries are not used.
 
 GitHub release packages are attested in a separate job and their source commit,
-workflow and `main` ref are verified before creating or refreshing a draft.
-Only the current `main` commit can produce a release draft. Publish the draft
-manually after review. Published releases and their tags cannot be overwritten:
-increment `VERSION` and the application's version settings for the next release.
-Private drafts may still be rebuilt. Tag-triggered builds do not publish assets.
+workflow and `main` ref are verified before creating a build draft.
+Only the current `main` commit can produce a release draft. Every attempt creates
+its own `v<version>-build-<commit>-<unique ID>` tag and draft, leaving previous
+builds untouched. Publish the verified draft manually after review. An interrupted
+attempt may leave an incomplete draft; retry creates a new one. Review its complete
+asset list and checksums before publishing. Published releases and their tags cannot
+be overwritten: increment `VERSION` and the application's version settings for the
+next release. Tag-triggered builds do not publish assets.

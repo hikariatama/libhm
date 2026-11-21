@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace verified artifacts in the current version's GitHub draft release."""
+"""Create a separate build draft without modifying existing releases or tags."""
 import hashlib
 import json
 import os
@@ -9,6 +9,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 
 class GitHub:
@@ -51,10 +52,15 @@ class GitHub:
 
 def collect_artifacts(directory, expected):
     files = {}
+    sums = directory / 'SHA256SUMS.txt'
+    if sums.name in expected:
+        raise ValueError('SHA256SUMS.txt is generated, not an input package')
     for path in directory.rglob('*'):
-        if not path.is_file():
+        if path.is_symlink():
+            raise ValueError('Distribution contains symlinks')
+        if path == sums or not path.is_file():
             continue
-        if path.is_symlink() or path.name in files:
+        if path.name in files:
             raise ValueError('Distribution contains symlinks or duplicate filenames')
         if path.stat().st_size == 0:
             raise ValueError('Distribution contains an empty file')
@@ -63,7 +69,6 @@ def collect_artifacts(directory, expected):
         missing = sorted(set(expected) - set(files))
         extra = sorted(set(files) - set(expected))
         raise ValueError(f'Distribution mismatch: missing={missing}, unexpected={extra}')
-    sums = directory / 'SHA256SUMS.txt'
     sums.write_text(''.join(hashlib.sha256(files[name].read_bytes()).hexdigest() + '  ' + name + '\n'
                             for name in sorted(files)))
     files[sums.name] = sums
@@ -79,29 +84,21 @@ def publish(github, version, sha, files, *, ref='refs/heads/main', notes=''):
     head = github.request('GET', '/git/ref/heads/main')
     if not head or head['object']['sha'] != sha:
         raise RuntimeError('A newer commit exists; rebuild the latest main commit')
-    existing = next((r for r in github.pages('/releases') if r['tag_name'] == tag), None)
-    if existing and existing.get('draft') is not True:
+    releases = list(github.pages('/releases'))
+    build_prefix = tag + '-build-'
+    if any((r['tag_name'] == tag or r['tag_name'].startswith(build_prefix))
+           and r.get('draft') is not True for r in releases):
         raise RuntimeError('Version is already published; increment VERSION before releasing again')
-    draft = True
 
-    reference = '/git/refs/tags/' + tag
-    tag_ref = github.request('GET', '/git/ref/tags/' + tag)
-    if tag_ref and tag_ref['object']['sha'] != sha:
-        if not existing:
-            raise RuntimeError('Version tag already targets another commit; use a new version')
-        # Only the tag belonging to this still-private draft can move.
-        github.request('PATCH', reference, {'sha': sha, 'force': True})
-    elif not tag_ref:
-        github.request('POST', '/git/refs', {'ref': 'refs/tags/' + tag, 'sha': sha})
-    payload = {'tag_name': tag, 'target_commitish': sha, 'name': github.repository.rsplit('/', 1)[-1] + ' ' + tag, 'draft': draft, 'prerelease': False,
-               'body': notes.strip()}
-    if existing:
-        release = github.request('PATCH', '/releases/' + str(existing['id']), payload)
-        for asset in github.pages('/releases/' + str(existing['id']) + '/assets'):
-            github.request('DELETE', '/releases/assets/' + str(asset['id']))
-    else:
-        release = github.request('POST', '/releases', payload)
-    if not release or release.get('draft') != draft:
+    # Each attempt owns a new tag and draft; an owner can publish older drafts
+    # without racing a retag, publication-state reset or asset deletion here.
+    build_tag = build_prefix + sha + '-' + uuid.uuid4().hex
+    github.request('POST', '/git/refs', {'ref': 'refs/tags/' + build_tag, 'sha': sha})
+    payload = {'tag_name': build_tag, 'target_commitish': sha,
+               'name': github.repository.rsplit('/', 1)[-1] + ' ' + tag + ' (' + sha[:12] + ')',
+               'draft': True, 'prerelease': False, 'body': notes.strip()}
+    release = github.request('POST', '/releases', payload)
+    if not release or release.get('draft') is not True:
         raise RuntimeError('GitHub changed the release publication state')
     uploaded = []
     for name, path in sorted(files.items()):

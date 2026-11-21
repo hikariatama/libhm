@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 @preconcurrency import Photos
 
 struct LibrarySnapshot: Sendable {
@@ -98,12 +99,13 @@ private final class AuthorizationReply {
 }
 
 @MainActor
+@Observable
 final class PhotoImageLoader {
     static let shared = PhotoImageLoader()
     private let manager = PHCachingImageManager()
     private let cache = MemoryCache<NSImage>(limit: 96 * 1024 * 1024)
     private var preheated: [PHAsset] = []
-    private var epoch = 0
+    private(set) var epoch = 0
     private var active: [UUID: PHImageRequestID] = [:]
     static let thumbnailSize = CGSize(width: 384, height: 384)
 

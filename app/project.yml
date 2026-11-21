@@ -7,7 +7,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     PRODUCT_NAME: libhm
-    MARKETING_VERSION: "0.0.1"
+    MARKETING_VERSION: "0.0.2"
     CURRENT_PROJECT_VERSION: "1"
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_CFBundleDisplayName: libhm
